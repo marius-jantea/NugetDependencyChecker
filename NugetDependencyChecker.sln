@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.33530.505
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugetDependencyChecker.ConsoleApp", "NugetDependencyChecker\NugetDependencyChecker.ConsoleApp.csproj", "{1CB5FE98-FDB9-4666-9566-3A74EE14E903}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugetDependencyChecker.BusinessLogic", "NugetDependencyChecker.BusinessLogic\NugetDependencyChecker.BusinessLogic.csproj", "{419F80EB-65AB-4775-ABC3-4B6A3CF2E549}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1CB5FE98-FDB9-4666-9566-3A74EE14E903}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1CB5FE98-FDB9-4666-9566-3A74EE14E903}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1CB5FE98-FDB9-4666-9566-3A74EE14E903}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1CB5FE98-FDB9-4666-9566-3A74EE14E903}.Release|Any CPU.Build.0 = Release|Any CPU
+		{419F80EB-65AB-4775-ABC3-4B6A3CF2E549}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{419F80EB-65AB-4775-ABC3-4B6A3CF2E549}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{419F80EB-65AB-4775-ABC3-4B6A3CF2E549}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{419F80EB-65AB-4775-ABC3-4B6A3CF2E549}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E3E51676-64A0-4F2A-A744-1B8F25CF985D}
+	EndGlobalSection
+EndGlobal
