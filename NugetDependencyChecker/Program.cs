@@ -9,6 +9,9 @@ namespace NugetDependencyChecker.ConsoleApp
 {
     internal class Program
     {
+        private static int numberOfDependenciesThatCanBeRemoved;
+        private static int totalNumberOfDependencies;
+
         const string projectAssetsJsonPath = "project.assets.json";
         private static IEnumerable<Package> relevantPackages = new List<Package>();
 
@@ -25,7 +28,7 @@ namespace NugetDependencyChecker.ConsoleApp
 
             Console.WriteLine($"There are {relevantPackages.Count()} {packageFilterPrefix}.* packages.");
             Console.WriteLine($"There are {relevantPackages.DistinctBy(x => x.Name).Count()} distinct packages.");
-            Console.WriteLine($"There are {relevantPackages.Where(x => x.Name.Split(".").Count() == 3).Count()} main packages (*.*.*)");
+            Console.WriteLine($"There are {relevantPackages.Where(x => x.Name.Split(".").Count() == 3).Count()} main packages (..*)");
             var index = 0;
             foreach (var package in relevantPackages.OrderByDescending(x => x.NumberOfPackagesThatUseThisPackage))
             {
@@ -77,6 +80,15 @@ namespace NugetDependencyChecker.ConsoleApp
             var relevantPackagesDotOutput = GetDotOutput(relevantPackages);
             File.WriteAllText(@"originalPackages.dot", relevantPackagesDotOutput.ToString());
             GeneratePngFromDotFile("originalPackages.dot");
+
+            RemoveDirectDependenciesThatAreTransient();
+            var optimizedPackagesDotOutput = GetDotOutput(relevantPackages);
+            File.WriteAllText(@"optimizedPackages.dot", optimizedPackagesDotOutput.ToString());
+            GeneratePngFromDotFile("optimizedPackages.dot");
+        }
+
+        private static void RemoveDirectDependenciesThatAreTransient()
+        {
             foreach (var package in relevantPackages)
             {
                 totalNumberOfDependencies += package.Dependencies.Count();
@@ -87,35 +99,35 @@ namespace NugetDependencyChecker.ConsoleApp
                     {
                         package.Dependencies.Remove(dependency);
                         numberOfDependenciesThatCanBeRemoved++;
-                        //Console.WriteLine($"Package {package.Name} contains the direct dependency to the package {dependency.Name} that is also transient");
                     }
                 }
             }
-
-            var optimizedPackagesDotOutput = GetDotOutput(relevantPackages);
-            File.WriteAllText(@"optimizedPackages.dot", optimizedPackagesDotOutput.ToString());
-            GeneratePngFromDotFile("optimizedPackages.dot");
         }
 
         private static void GeneratePngFromDotFile(string dotFilename)
         {
-            string command = $"dot -Tpng -Kcirco {dotFilename} -o {dotFilename.Split(".")[0]}.png"; // Replace with your desired terminal command
-
-            // Create a process start info
-            ProcessStartInfo processStartInfo = new ProcessStartInfo
+            if (!IsDotInstalled())
             {
-                FileName = "/bin/bash", // macOS uses bash as the default shell
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                Arguments = $"-c \"{command}\""
-            };
+                Console.WriteLine("Graphviz (dot) is not installed on your system.");
+                Console.WriteLine("You can download and install it from:");
+                Console.WriteLine("https://graphviz.gitlab.io/download/");
+
+                // Optionally, you can open a web browser to the download page
+                // OpenGraphvizDownloadPage();
+
+                Console.WriteLine("Press any key to exit.");
+                Console.ReadKey();
+                return;
+            }
+
+            string command = $"dot -Tpng -Kcirco {dotFilename} -o {dotFilename.Split(".")[0]}.png"; // Replace with your desired terminal command
+            ProcessStartInfo processStartInfo = CreateProcessStartInfo(command);
 
             // Create and start the process
             using (Process process = new Process())
             {
                 process.StartInfo = processStartInfo;
+                Console.WriteLine("Started dot png generation");
                 process.Start();
 
                 // Read the output (stdout and stderr) of the command
@@ -135,7 +147,89 @@ namespace NugetDependencyChecker.ConsoleApp
                 }
             }
         }
-        
+
+        static bool IsDotInstalled()
+        {
+            try
+            {
+                using (Process process = new Process())
+                {
+                    process.StartInfo.FileName = "dot";
+                    process.StartInfo.Arguments = "--help";
+                    process.StartInfo.RedirectStandardError = true;
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.CreateNoWindow = true;
+                    process.Start();
+
+                    process.WaitForExit();
+
+                    return process.ExitCode == 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Handle the exception (e.g., log or display an error message)
+                Console.WriteLine($"An error occurred: {ex.Message}");
+                return false;
+            }
+        }
+
+        static void OpenGraphvizDownloadPage()
+        {
+            Process.Start("https://graphviz.gitlab.io/download/");
+        }
+
+
+        private static ProcessStartInfo CreateProcessStartInfo(string command)
+        {
+
+            // Create a process start info
+            ProcessStartInfo processStartInfo = new ProcessStartInfo
+            {
+                FileName = GetShellName(),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                Arguments = $"-c \"{command}\""
+            };
+            return processStartInfo;
+        }
+
+        static string GetShellName()
+        {
+            if (IsWindows())
+            {
+                return "cmd.exe";
+            }
+            else if (IsMacOS() || IsLinux())
+            {
+                return "/bin/bash"; // On macOS and many Linux distributions
+            }
+            else
+            {
+                throw new NotSupportedException("Unsupported operating system.");
+            }
+        }
+
+        private static bool IsWindows()
+        {
+            int platform = (int)Environment.OSVersion.Platform;
+            return (platform != 4 && platform != 6 && platform != 128);
+        }
+
+        // Function to check if the OS is macOS
+        private static bool IsMacOS()
+        {
+            return Environment.OSVersion.Platform == PlatformID.MacOSX;
+        }
+
+        // Function to check if the OS is Linux
+        private static bool IsLinux()
+        {
+            return Environment.OSVersion.Platform == PlatformID.Unix;
+        }
+
         private static StringBuilder GetDotOutput(IEnumerable<Package> packages)
         {
             var dotOutput = new StringBuilder();
@@ -176,7 +270,7 @@ namespace NugetDependencyChecker.ConsoleApp
                 {
                     if (!string.IsNullOrEmpty(dependency.Guid))
                     {
-                        var dependencyPackageRootName =GetPackageRootName(dependency.Name);
+                        var dependencyPackageRootName = GetPackageRootName(dependency.Name);
                         var color = mainPackageRootName.Equals(dependencyPackageRootName) ? "gray88" : "black";
                         dotOutput.AppendLine($"{package.Guid} -> {dependency.Guid}  [color=\"{color}\"];");
                     }
@@ -190,7 +284,7 @@ namespace NugetDependencyChecker.ConsoleApp
         private static Color GetRandomColor()
         {
             Random randomGen = new Random();
-            KnownColor[] names = (KnownColor[]) Enum.GetValues(typeof(KnownColor));
+            KnownColor[] names = (KnownColor[])Enum.GetValues(typeof(KnownColor));
             KnownColor randomColorName = names[randomGen.Next(30, 166)];
             return Color.FromKnownColor(randomColorName);
         }
@@ -199,9 +293,6 @@ namespace NugetDependencyChecker.ConsoleApp
         {
             return string.Join("", packageName.Split(".").Take(3));
         }
-
-        private static int numberOfDependenciesThatCanBeRemoved;
-        private static int totalNumberOfDependencies;
 
         private static IEnumerable<Package> GetAllTransientDependenciesForPackage(Package package)
         {
@@ -288,7 +379,7 @@ namespace NugetDependencyChecker.ConsoleApp
             else
             {
                 Console.WriteLine("Enter the relevant package prefix");
-                relevantPackagesPrefix = Console.ReadLine();
+                relevantPackagesPrefix = Console.ReadLine() ?? "";
             }
 
             return relevantPackagesPrefix;

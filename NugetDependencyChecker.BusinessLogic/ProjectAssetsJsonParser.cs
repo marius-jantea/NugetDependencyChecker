@@ -1,10 +1,15 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using NugetDependencyChecker.BusinessLogic.Models;
 
 namespace NugetDependencyChecker.BusinessLogic
 {
     public class Parser
     {
+        private const string librariesJsonKey = "targets";
+        private const string dependenciesJsonKey = "dependencies";
+        private const char nameVersionSeparator = '/';
+
         private readonly string jsonPath;
         private readonly string packageFilterPrefix;
         private readonly IList<Package> allPackages;
@@ -19,48 +24,80 @@ namespace NugetDependencyChecker.BusinessLogic
         public IEnumerable<Package> Parse()
         {
             var packageInfo = File.ReadAllText(jsonPath);
-            JObject obj = JObject.Parse(packageInfo);
-            JObject targets = (JObject)obj["targets"][".NETStandard,Version=v2.1"];
+            var obj = JObject.Parse(packageInfo);
 
-            foreach (JProperty package in targets.Children())
+            var jsonObject = JsonConvert.DeserializeObject<dynamic>(packageInfo);
+            foreach (var targetFramework in jsonObject.targets)
             {
-                string nameVersion = package.Name;
-                string[] nameVersionArr = nameVersion.Split('/');
-                string packageName = nameVersionArr[0];
-                string packageVersion = nameVersionArr[1];
+                var packages = targetFramework.Value;
 
-                var listOfDependencies = new List<Package>();
-
-                JObject dependencies = (JObject)package.First["dependencies"];
-
-                if (dependencies != null)
+                // Iterate through packages for the current target framework
+                foreach (var package in packages)
                 {
-                    foreach (var dependency in dependencies)
+                    string nameVersion = package.Name;
+                    string[] nameVersionArr = nameVersion.Split('/');
+                    string packageName = nameVersionArr[0];
+                    string packageVersion = nameVersionArr[1];
+
+                    if (!StringStartsWithPrefix(packageName))
                     {
-                        listOfDependencies.Add(new Package(dependency.Key, dependency.Value.ToString()));
+                        continue;
+                    }
+
+                    var listOfDependencies = new List<Package>();
+
+                    JObject dependencies = (JObject)package.First["dependencies"];
+
+                    if (dependencies != null)
+                    {
+                        foreach (var dependency in dependencies)
+                        {
+                            if (StringStartsWithPrefix(dependency.Key))
+                            {
+                                listOfDependencies.Add(new Package(dependency.Key, dependency.Value.ToString()));
+                            }
+                        }
+                    }
+
+
+                    allPackages.Add(new Package(packageName, packageVersion, listOfDependencies));
+
+                }
+
+                foreach (var package in allPackages)
+                {
+                    foreach (var dependency in allPackages.Where(x => x.Dependencies.Any(y => y.Name.Equals(package.Name))))
+                    {
+                        var dependencyFromDependency = dependency.Dependencies.First(x => x.Name.Equals(package.Name));
+                        package.PackagesThatUseThisPackage.Add(new ChildPackage(dependency.Name, dependencyFromDependency.Version, dependency.Version));
                     }
                 }
-
-                listOfDependencies = listOfDependencies.Where(x => x.Name.StartsWith(packageFilterPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
-                allPackages.Add(new Package(packageName, packageVersion, listOfDependencies));
             }
+            return allPackages;
+        }
 
-            var result = GetFilteredPackages(packageFilterPrefix);
-            foreach (var package in result)
-            {
-                foreach (var dependency in allPackages.Where(x => x.Dependencies.Any(y => y.Name.Equals(package.Name))))
-                {
-                    var dependencyFromDependency = dependency.Dependencies.First(x => x.Name.Equals(package.Name));
-                    package.PackagesThatUseThisPackage.Add(new ChildPackage(dependency.Name, dependencyFromDependency.Version, dependency.Version));
-                }
-            }
-            return result;
+        private bool NameStartsWithPrefix(string name)
+        {
+            return name.StartsWith(packageFilterPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private IEnumerable<Package> PackagesThatAreDependentOnPackage(string packageName)
+        {
+            return allPackages.Where(x => x.Dependencies.Any(y => y.Name.Equals(packageName))).ToList();
         }
 
         private IEnumerable<Package> GetFilteredPackages(string relevantPackagesPrefix)
         {
-            return string.IsNullOrEmpty(relevantPackagesPrefix) ? allPackages : allPackages.Where(x => x.Name.StartsWith(relevantPackagesPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            return string.IsNullOrEmpty(relevantPackagesPrefix) ? allPackages : allPackages.Where(x => StringStartsWithPrefix(x.Name)).ToList();
         }
 
+        private bool StringStartsWithPrefix(string stringToBeVerified)
+        {
+            if (string.IsNullOrEmpty(packageFilterPrefix))
+            {
+                return true;
+            }
+            return stringToBeVerified.StartsWith(packageFilterPrefix, StringComparison.OrdinalIgnoreCase);
+        }
     }
 }
