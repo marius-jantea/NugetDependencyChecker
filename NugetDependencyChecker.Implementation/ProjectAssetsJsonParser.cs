@@ -1,27 +1,26 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NugetDependencyChecker.BusinessLogic;
 using NugetDependencyChecker.BusinessLogic.Models;
 
-namespace NugetDependencyChecker.BusinessLogic
+namespace NugetDependencyChecker.Implementation
 {
-    public class Parser
+    public class ProjectAssetsJsonParser : IPackageDetailsGetter
     {
         private const string librariesJsonKey = "targets";
         private const string dependenciesJsonKey = "dependencies";
         private const char nameVersionSeparator = '/';
 
         private readonly string jsonPath;
-        private readonly string packageFilterPrefix;
         private readonly IList<Package> allPackages;
 
-        public Parser(string projectAssetsJsonPath, string packageFilterPrefix)
+        public ProjectAssetsJsonParser(string projectAssetsJsonPath)
         {
             jsonPath = projectAssetsJsonPath;
-            this.packageFilterPrefix = packageFilterPrefix;
             allPackages = new List<Package>();
         }
 
-        public IEnumerable<Package> Parse()
+        public IEnumerable<Package> GetAllPackages(string packageFilterPrefix)
         {
             var packageInfo = File.ReadAllText(jsonPath);
             var obj = JObject.Parse(packageInfo);
@@ -39,20 +38,18 @@ namespace NugetDependencyChecker.BusinessLogic
                     string packageName = nameVersionArr[0];
                     string packageVersion = nameVersionArr[1];
 
-                    if (!StringStartsWithPrefix(packageName))
+                    if (!StringStartsWithPrefix(packageName, packageFilterPrefix))
                     {
                         continue;
                     }
-
                     var listOfDependencies = new List<Package>();
-
                     JObject dependencies = (JObject)package.First["dependencies"];
 
                     if (dependencies != null)
                     {
                         foreach (var dependency in dependencies)
                         {
-                            if (StringStartsWithPrefix(dependency.Key))
+                            if (StringStartsWithPrefix(dependency.Key, packageFilterPrefix))
                             {
                                 listOfDependencies.Add(new Package(dependency.Key, dependency.Value.ToString()));
                             }
@@ -76,28 +73,18 @@ namespace NugetDependencyChecker.BusinessLogic
             return allPackages;
         }
 
-        private bool NameStartsWithPrefix(string name)
-        {
-            return name.StartsWith(packageFilterPrefix, StringComparison.OrdinalIgnoreCase);
-        }
-
         private IEnumerable<Package> PackagesThatAreDependentOnPackage(string packageName)
         {
             return allPackages.Where(x => x.Dependencies.Any(y => y.Name.Equals(packageName))).ToList();
         }
 
-        private IEnumerable<Package> GetFilteredPackages(string relevantPackagesPrefix)
+        private bool StringStartsWithPrefix(string stringToBeVerified, string prefix)
         {
-            return string.IsNullOrEmpty(relevantPackagesPrefix) ? allPackages : allPackages.Where(x => StringStartsWithPrefix(x.Name)).ToList();
-        }
-
-        private bool StringStartsWithPrefix(string stringToBeVerified)
-        {
-            if (string.IsNullOrEmpty(packageFilterPrefix))
+            if (string.IsNullOrEmpty(prefix))
             {
                 return true;
             }
-            return stringToBeVerified.StartsWith(packageFilterPrefix, StringComparison.OrdinalIgnoreCase);
+            return stringToBeVerified.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
         }
     }
 }
