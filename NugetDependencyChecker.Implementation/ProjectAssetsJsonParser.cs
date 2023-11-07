@@ -34,16 +34,15 @@ namespace NugetDependencyChecker.Implementation
                 foreach (var package in packages)
                 {
                     string nameVersion = package.Name;
-                    string[] nameVersionArr = nameVersion.Split('/');
-                    string packageName = nameVersionArr[0];
-                    string packageVersion = nameVersionArr[1];
+
+                    (string packageName, string packageVersion) = GetPackageNameAndVersion(nameVersion);
 
                     if (!StringStartsWithPrefix(packageName, packageFilterPrefix))
                     {
                         continue;
                     }
                     var listOfDependencies = new List<Package>();
-                    JObject dependencies = (JObject)package.First["dependencies"];
+                    JObject dependencies = (JObject)package.First[dependenciesJsonKey];
 
                     if (dependencies != null)
                     {
@@ -71,6 +70,12 @@ namespace NugetDependencyChecker.Implementation
                 }
             }
             return allPackages;
+        }
+
+        private (string name, string version) GetPackageNameAndVersion(string packageName)
+        {
+            string[] nameVersionArr = packageName.Split('/');
+            return (name: nameVersionArr[0], version: nameVersionArr[1]);
         }
 
         private IEnumerable<Package> PackagesThatAreDependentOnPackage(string packageName)

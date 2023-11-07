@@ -23,6 +23,16 @@ namespace NugetDependencyChecker.ConsoleApp
 
             await dependencyMatrixCreator.CreateDependencyMatrix(relevantPackages);
 
+            OutputGeneralPackageInformationToConsole(packageFilterPrefix);
+
+            await dependencyDiagramCreator.CreateDependencyDiagram(relevantPackages);
+
+            RemoveDirectDependenciesThatAreTransient();
+            await dependencyDiagramCreator.CreateDependencyDiagram(relevantPackages);
+        }
+
+        private static void OutputGeneralPackageInformationToConsole(string packageFilterPrefix)
+        {
             Console.WriteLine($"There are {relevantPackages.Count()} {packageFilterPrefix}.* packages.");
             Console.WriteLine($"There are {relevantPackages.DistinctBy(x => x.Name).Count()} distinct packages.");
             Console.WriteLine($"There are {relevantPackages.Where(x => x.Name.Split(".").Count() == 3).Count()} main packages (..*)");
@@ -70,11 +80,6 @@ namespace NugetDependencyChecker.ConsoleApp
                     Console.WriteLine($"Alert! {package.Name}");
                 }
             }
-
-            await dependencyDiagramCreator.CreateDependencyDiagram(relevantPackages);
-
-            RemoveDirectDependenciesThatAreTransient();
-            await dependencyDiagramCreator.CreateDependencyDiagram(relevantPackages);
         }
 
         private static void RemoveDirectDependenciesThatAreTransient()
