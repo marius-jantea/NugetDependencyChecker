@@ -14,7 +14,6 @@ namespace NugetDependencyChecker.Implementation
             {
                 var randomFileName = Path.GetRandomFileName() + ".dot";
                 var relevantPackagesDotOutput = GetDotOutput(packages);
-                throw new NotImplementedException();
 
                 File.WriteAllText(randomFileName, relevantPackagesDotOutput.ToString());
                 GeneratePngFromDotFile(randomFileName);
@@ -130,8 +129,8 @@ namespace NugetDependencyChecker.Implementation
                 };
                 Console.WriteLine("Started dot png generation");
                 process.Start();
-
                 process.WaitForExit();
+                Console.WriteLine("Finished dot png generation");
             }
         }
 
@@ -165,17 +164,15 @@ namespace NugetDependencyChecker.Implementation
         {
 
             // Create a process start info
-            ProcessStartInfo processStartInfo = new ProcessStartInfo
+            return new ProcessStartInfo
             {
                 FileName = GetShellName(),
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
-                CreateNoWindow = true,
-                Arguments = $"-c \"{command}\"",
+                CreateNoWindow = false,
+                Arguments = $"/C {command}"
             };
-
-            return processStartInfo;
         }
 
         static string GetShellName()
