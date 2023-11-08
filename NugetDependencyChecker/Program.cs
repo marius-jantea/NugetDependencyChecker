@@ -115,6 +115,7 @@ namespace NugetDependencyChecker.ConsoleApp
         }
 
 
+
         private static string GetProjectAssetsJsonFilePath(string[] args)
         {
             var jsonPath = string.Empty;
