@@ -140,7 +140,7 @@ namespace NugetDependencyChecker.ConsoleApp
         private static string GetPackageFilterPrefix(string[] args)
         {
             string relevantPackagesPrefix = string.Empty;
-            if (args.Any() && !string.IsNullOrEmpty(args[1]))
+            if (args.Length >= 2 && !string.IsNullOrEmpty(args[1]))
             {
                 relevantPackagesPrefix = args[1];
             }
