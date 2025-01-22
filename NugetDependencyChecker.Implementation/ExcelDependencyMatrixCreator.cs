@@ -6,11 +6,18 @@ namespace NugetDependencyChecker.Implementation
 {
     public class ExcelDependencyMatrixCreator : IDependencyMatrixCreator
     {
+        private readonly string? _filePath;
+
+        public ExcelDependencyMatrixCreator(string? filePath = null)
+        {
+            _filePath = filePath;
+        }
+
         public Task CreateDependencyMatrix(IEnumerable<Package> packages)
         {
             try
             {
-                var fileName = $"DependencyMatrix_{DateTime.Now.Ticks}.xlsx";
+                var fileName = _filePath ?? $"DependencyMatrix_{DateTime.Now.Ticks}.xlsx";
 
                 FileInfo excel = new(fileName);
 
@@ -47,9 +54,11 @@ namespace NugetDependencyChecker.Implementation
 
                 return Task.CompletedTask;
             }
-            catch
+            catch(Exception ex)
             {
-                return Task.FromException(new Exception("An error has occured while generating excel dependency matrix."));
+                Console.WriteLine(ex);
+                return Task.FromException(
+                    new Exception("An error has occured while generating excel dependency matrix."));
             }
         }
     }

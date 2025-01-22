@@ -8,6 +8,13 @@ namespace NugetDependencyChecker.Implementation;
 
 public class DotDependencyDiagramCreator : IDependencyDiagramCreator
 {
+    private readonly string? _filePath;
+
+    public DotDependencyDiagramCreator(string? filePath = null)
+    {
+        _filePath = filePath;
+    }
+
     public Task CreateDependencyDiagram(IEnumerable<Package> packages)
     {
         try
@@ -40,7 +47,8 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
         for (var i = 0; i < packages.Count(); i++)
         {
             var relevantPackage = packages.ElementAt(i);
-            var allPackages = packages.Where(x => x.Dependencies.Any(y => y.Name.Equals(relevantPackage.Name))).ToList();
+            var allPackages = packages.Where(x => x.Dependencies.Any(y => y.Name.Equals(relevantPackage.Name)))
+                .ToList();
             relevantPackage.Guid = $"a{i}i{allPackages.Count()}o{relevantPackage.Dependencies.Count()}";
             relevantPackage.RootPackageName = GetPackageRootName(relevantPackage.Name);
             if (!rootPackageColors.ContainsKey(relevantPackage.RootPackageName))
@@ -51,7 +59,8 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
 
         foreach (var package in packages)
         {
-            dotOutput.AppendLine($"{package.Guid} [penwitdh=20 color=\"{rootPackageColors[package.RootPackageName].Name}\"];");
+            dotOutput.AppendLine(
+                $"{package.Guid} [penwitdh=20 color=\"{rootPackageColors[package.RootPackageName].Name}\"];");
             foreach (var dependency in package.Dependencies)
             {
                 var packageFromList = packages.FirstOrDefault(x => x.Name.Equals(dependency.Name));
@@ -91,7 +100,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
     }
 
 
-    private static void GeneratePngFromDotFile(string dotFilename)
+    private void GeneratePngFromDotFile(string dotFilename)
     {
         if (!IsDotInstalled())
         {
@@ -104,8 +113,9 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
             return;
         }
 
+        string pngFilePath = _filePath ?? $"{dotFilename.Split(".")[0]}.png";
         string command =
-        $"dot -Tpng -Kcirco {dotFilename} -o {dotFilename.Split(".")[0]}.png";
+            $"dot -Tpng -Kcirco {dotFilename} -o {pngFilePath}";
         ProcessStartInfo processStartInfo = CreateProcessStartInfo(command);
 
         using (Process process = new Process())
