@@ -1,3 +1,6 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
 name: Build and deploy ASP.Net Core app to Azure Web App - nuget-dependencies
 
 on:
@@ -18,20 +21,17 @@ jobs:
         with:
           dotnet-version: '8.x'
 
-      - name: Restore dependencies
-        run: dotnet restore ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj
-
       - name: Build with dotnet
-        run: dotnet build ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj --configuration Release
+        run: dotnet build --configuration Release
 
-      - name: Publish the application
-        run: dotnet publish ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj -c Release -o ./myapp
+      - name: dotnet publish
+        run: dotnet publish ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj -c Release -o ${{env.DOTNET_ROOT}}/myapp
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: .net-app
-          path: ./myapp
+          path: ${{env.DOTNET_ROOT}}/myapp
 
   deploy:
     runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: .net-app
-
+      
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -61,4 +61,4 @@ jobs:
         with:
           app-name: 'nuget-dependencies'
           slot-name: 'Production'
-          package: ./myapp
+          package: .
