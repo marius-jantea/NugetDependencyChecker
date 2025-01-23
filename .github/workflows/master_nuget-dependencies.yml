@@ -54,7 +54,10 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_043A5C8A72054E358E85CA8324BBDAB6 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7206E7BFE8724DB7B144B887B332C357 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_80891A99381747D0A96AF6E43C9B559A }}
-
+      
+      - name: Print current directory
+        run: pwd
+      
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
