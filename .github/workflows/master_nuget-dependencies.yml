@@ -25,13 +25,13 @@ jobs:
         run: dotnet build ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj --configuration Release
 
       - name: Publish the application
-        run: dotnet publish ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj -c Release -o ./published-app
+        run: dotnet publish ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj -c Release -o ./myapp
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: .net-app
-          path: ./published-app
+          path: ./myapp
 
   deploy:
     runs-on: ubuntu-latest
@@ -61,4 +61,4 @@ jobs:
         with:
           app-name: 'nuget-dependencies'
           slot-name: 'Production'
-          package: ./published-app
+          package: ./myapp
