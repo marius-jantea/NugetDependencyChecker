@@ -262,6 +262,7 @@ UpgradeLog*.XML
 # Repository-local generated analysis outputs
 DependencyMatrix_*.xlsx
 DependencyDiagram*.png
+DependencyDiagram*.svg
 *.dot
 
 # Generated assets files that should not live in source control
