@@ -56,6 +56,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: '.net-app'
+          path: ./publish
+
+      - name: Verify published files exist
+        run: |
+          ls -la ./publish
+          test -f ./publish/NugetDependencyChecker.WebApi.dll
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -70,4 +76,4 @@ jobs:
         with:
           app-name: 'nuget-dependencies'
           slot-name: 'Production'
-          package: .
+          package: ./publish
