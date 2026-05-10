@@ -7,9 +7,8 @@ namespace NugetDependencyChecker.Implementation
 {
     public class ProjectAssetsJsonParser : IPackageDetailsGetter
     {
-        private const string librariesJsonKey = "targets";
+        private const string targetsJsonKey = "targets";
         private const string dependenciesJsonKey = "dependencies";
-        private const char nameVersionSeparator = '/';
 
         private readonly string jsonPath;
         private readonly IList<Package> allPackages;
@@ -22,18 +21,29 @@ namespace NugetDependencyChecker.Implementation
 
         public IEnumerable<Package> GetAllPackages(string packageFilterPrefix)
         {
-            var packageInfo = File.ReadAllText(jsonPath);
-            var obj = JObject.Parse(packageInfo);
+            allPackages.Clear();
 
-            var jsonObject = JsonConvert.DeserializeObject<dynamic>(packageInfo);
-            foreach (var targetFramework in jsonObject.targets)
+            var packageInfo = File.ReadAllText(jsonPath);
+            var jsonObject = JObject.Parse(packageInfo);
+            var targets = jsonObject[targetsJsonKey] as JObject;
+
+            if (targets == null)
             {
-                var packages = targetFramework.Value;
+                return allPackages;
+            }
+
+            foreach (var targetFramework in targets.Properties())
+            {
+                var packages = targetFramework.Value as JObject;
+                if (packages == null)
+                {
+                    continue;
+                }
 
                 // Iterate through packages for the current target framework
-                foreach (var package in packages)
+                foreach (var packageProperty in packages.Properties())
                 {
-                    string nameVersion = package.Name;
+                    string nameVersion = packageProperty.Name;
 
                     (string packageName, string packageVersion) = GetPackageNameAndVersion(nameVersion);
 
@@ -41,8 +51,10 @@ namespace NugetDependencyChecker.Implementation
                     {
                         continue;
                     }
+
                     var listOfDependencies = new List<Package>();
-                    JObject dependencies = (JObject)package.First[dependenciesJsonKey];
+                    var packageValue = packageProperty.Value as JObject;
+                    var dependencies = packageValue?[dependenciesJsonKey] as JObject;
 
                     if (dependencies != null)
                     {
@@ -50,7 +62,7 @@ namespace NugetDependencyChecker.Implementation
                         {
                             if (StringStartsWithPrefix(dependency.Key, packageFilterPrefix))
                             {
-                                listOfDependencies.Add(new Package(dependency.Key, dependency.Value.ToString()));
+                                listOfDependencies.Add(new Package(dependency.Key, dependency.Value?.ToString() ?? string.Empty));
                             }
                         }
                     }
@@ -74,7 +86,12 @@ namespace NugetDependencyChecker.Implementation
 
         private (string name, string version) GetPackageNameAndVersion(string packageName)
         {
-            string[] nameVersionArr = packageName.Split('/');
+            var nameVersionArr = packageName.Split('/');
+            if (nameVersionArr.Length < 2)
+            {
+                return (name: packageName, version: string.Empty);
+            }
+
             return (name: nameVersionArr[0], version: nameVersionArr[1]);
         }
 

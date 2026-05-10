@@ -17,7 +17,10 @@ namespace NugetDependencyChecker.ConsoleApp
 
             IPackageDetailsGetter projectAssetsJsonParser = new ProjectAssetsJsonParser(jsonPath);
             IDependencyMatrixCreator dependencyMatrixCreator = new ExcelDependencyMatrixCreator();
-            IDependencyDiagramCreator dependencyDiagramCreator = new DotDependencyDiagramCreator();
+            IDependencyDiagramCreator packageDependencyDiagramCreator =
+                new DotDependencyDiagramCreator(diagramMode: DotDependencyDiagramCreator.DependencyDiagramMode.Package);
+            IDependencyDiagramCreator repositoryDependencyDiagramCreator =
+                new DotDependencyDiagramCreator(diagramMode: DotDependencyDiagramCreator.DependencyDiagramMode.Repository);
 
             relevantPackages = projectAssetsJsonParser.GetAllPackages(packageFilterPrefix);
 
@@ -25,10 +28,10 @@ namespace NugetDependencyChecker.ConsoleApp
 
             OutputGeneralPackageInformationToConsole(packageFilterPrefix);
 
-            await dependencyDiagramCreator.CreateDependencyDiagram(relevantPackages);
+            //await packageDependencyDiagramCreator.CreateDependencyDiagram(relevantPackages);
 
             RemoveDirectDependenciesThatAreTransient();
-            await dependencyDiagramCreator.CreateDependencyDiagram(relevantPackages);
+            await repositoryDependencyDiagramCreator.CreateDependencyDiagram(relevantPackages);
         }
 
         private static void OutputGeneralPackageInformationToConsole(string packageFilterPrefix)

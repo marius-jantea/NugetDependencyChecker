@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Drawing;
 using System.Text;
 using NugetDependencyChecker.BusinessLogic.Models;
 using NugetDependencyChecker.BusinessLogic;
@@ -9,61 +8,194 @@ namespace NugetDependencyChecker.Implementation;
 public class DotDependencyDiagramCreator : IDependencyDiagramCreator
 {
     private readonly string? _filePath;
-
-    public DotDependencyDiagramCreator(string? filePath = null)
+    private const string PackageLayoutEngine = "fdp";
+    private const string RepositoryLayoutEngine = "dot";
+    private readonly DependencyDiagramMode _diagramMode;
+    private static readonly Lazy<bool> IsDotInstalledCache = new(CheckDotInstalled);
+    private static readonly string[] NodeColorPalette =
     {
-        _filePath = filePath;
+        "#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd", "#17becf", "#8c564b", "#e377c2"
+    };
+
+    public enum DependencyDiagramMode
+    {
+        Package,
+        Repository,
+        Both
     }
 
-    public Task CreateDependencyDiagram(IEnumerable<Package> packages)
+    public DotDependencyDiagramCreator(string? filePath = null, DependencyDiagramMode diagramMode = DependencyDiagramMode.Both)
+    {
+        _filePath = filePath;
+        _diagramMode = diagramMode;
+    }
+
+    public async Task CreateDependencyDiagram(IEnumerable<Package> packages)
     {
         try
         {
-            var randomFileName = Path.GetRandomFileName() + ".dot";
-            var relevantPackagesDotOutput = GetDotOutput(packages);
+            var packageList = packages.ToList();
+            var defaultOutputBaseName = $"DependencyDiagram_{DateTime.UtcNow.Ticks}";
+            var packageOutputPath = _filePath ?? $"{defaultOutputBaseName}.svg";
+            var repositoryOutputPath = _filePath != null && _diagramMode == DependencyDiagramMode.Both
+                ? BuildOutputPath(_filePath, "_repositories")
+                : _filePath ?? $"{defaultOutputBaseName}_repositories.svg";
 
-            File.WriteAllText(randomFileName, relevantPackagesDotOutput.ToString());
-            GeneratePngFromDotFile(randomFileName);
-            return Task.CompletedTask;
+            if (_diagramMode == DependencyDiagramMode.Package || _diagramMode == DependencyDiagramMode.Both)
+            {
+                CreateDiagram(packageList, packageOutputPath, DependencyDiagramMode.Package);
+            }
+
+            if (_diagramMode == DependencyDiagramMode.Repository || _diagramMode == DependencyDiagramMode.Both)
+            {
+                var repositoryPackages = AggregatePackagesByRepository(packageList);
+                CreateDiagram(repositoryPackages, repositoryOutputPath, DependencyDiagramMode.Repository);
+            }
+
+            await Task.CompletedTask;
+
         }
         catch
         {
-            return Task.FromException(new Exception("An error has occured while generating dot dependency diagram."));
+            throw new Exception("An error has occured while generating dot dependency diagram.");
         }
     }
 
-    private static StringBuilder GetDotOutput(IEnumerable<Package> packages)
+    private void CreateDiagram(IEnumerable<Package> packages, string? outputFilePath, DependencyDiagramMode mode)
     {
-        var dotOutput = new StringBuilder();
-        Dictionary<string, Color> rootPackageColors = new Dictionary<string, Color>();
-        dotOutput.AppendLine("digraph G {");
-        dotOutput.AppendLine(" layout=\"twopi\";");
-        dotOutput.AppendLine(" ranksep=3 // set radius, in inches");
-        dotOutput.AppendLine(" node [shape = circle];");
-        dotOutput.AppendLine(" edge [style=solid];");
-        dotOutput.AppendLine(" graph [overlap=false, splines=true];");
-        dotOutput.AppendLine(" //overlap = scale;");
-        dotOutput.AppendLine(" edge [concentrate=true]");
-        for (var i = 0; i < packages.Count(); i++)
+        var randomFileName = Path.GetRandomFileName() + ".dot";
+        var relevantPackagesDotOutput = GetDotOutput(packages, mode);
+        var layoutEngine = mode == DependencyDiagramMode.Repository
+            ? RepositoryLayoutEngine
+            : PackageLayoutEngine;
+
+        File.WriteAllText(randomFileName, relevantPackagesDotOutput.ToString());
+        var svgOutputPath = BuildImagePathWithExtension(outputFilePath, ".svg");
+
+        GenerateImageFromDotFile(randomFileName, svgOutputPath, "svg", false, layoutEngine);
+    }
+
+    private static List<Package> AggregatePackagesByRepository(IEnumerable<Package> packages)
+    {
+        var packageList = packages.ToList();
+        var packageLookup = packageList
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var repositoryDependencies = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var package in packageList)
         {
-            var relevantPackage = packages.ElementAt(i);
-            var allPackages = packages.Where(x => x.Dependencies.Any(y => y.Name.Equals(relevantPackage.Name)))
-                .ToList();
-            relevantPackage.Guid = $"a{i}i{allPackages.Count()}o{relevantPackage.Dependencies.Count()}";
-            relevantPackage.RootPackageName = GetPackageRootName(relevantPackage.Name);
-            if (!rootPackageColors.ContainsKey(relevantPackage.RootPackageName))
+            var sourceRepository = GetRepositoryName(package.Name);
+            if (!repositoryDependencies.ContainsKey(sourceRepository))
             {
-                rootPackageColors.Add(relevantPackage.RootPackageName, GetRandomColor());
+                repositoryDependencies[sourceRepository] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            foreach (var dependency in package.Dependencies)
+            {
+                if (!packageLookup.TryGetValue(dependency.Name, out var dependencyPackage))
+                {
+                    continue;
+                }
+
+                var targetRepository = GetRepositoryName(dependencyPackage.Name);
+                if (!sourceRepository.Equals(targetRepository, StringComparison.OrdinalIgnoreCase))
+                {
+                    repositoryDependencies[sourceRepository].Add(targetRepository);
+                }
             }
         }
 
-        foreach (var package in packages)
+        return repositoryDependencies
+            .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(x => new Package(
+                x.Key,
+                "repository",
+                x.Value
+                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                    .Select(name => new Package(name, "repository"))
+                    .ToList()))
+            .ToList();
+    }
+
+    private static string? BuildOutputPath(string? filePath, string suffix)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
         {
-            dotOutput.AppendLine(
-                $"{package.Guid} [penwitdh=20 color=\"{rootPackageColors[package.RootPackageName].Name}\"];");
+            return null;
+        }
+
+        var directory = Path.GetDirectoryName(filePath);
+        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
+        var extension = Path.GetExtension(filePath);
+        var repositoryFileName = $"{fileNameWithoutExtension}{suffix}{extension}";
+        return string.IsNullOrWhiteSpace(directory)
+            ? repositoryFileName
+            : Path.Combine(directory, repositoryFileName);
+    }
+
+    private StringBuilder GetDotOutput(IEnumerable<Package> packages, DependencyDiagramMode mode)
+    {
+        var packageList = packages.ToList();
+        var dotOutput = new StringBuilder();
+        var rootPackageColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var packageLookup = packageList
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var referencingCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var package in packageList)
+        {
             foreach (var dependency in package.Dependencies)
             {
-                var packageFromList = packages.FirstOrDefault(x => x.Name.Equals(dependency.Name));
+                if (!referencingCounts.ContainsKey(dependency.Name))
+                {
+                    referencingCounts[dependency.Name] = 0;
+                }
+
+                referencingCounts[dependency.Name]++;
+            }
+        }
+
+        var isRepositoryDiagram = mode == DependencyDiagramMode.Repository;
+        dotOutput.AppendLine("digraph G {");
+        var layoutEngine = isRepositoryDiagram ? RepositoryLayoutEngine : PackageLayoutEngine;
+        dotOutput.AppendLine($" layout=\"{layoutEngine}\";");
+
+            var graphAttributes = isRepositoryDiagram
+                ? " graph [overlap=prism, splines=true, bgcolor=\"#ffffff\", sep=0.7, nodesep=0.8, size=\"14,14!\", ratio=fill, pad=0.4];"
+                : " graph [overlap=prism, splines=true, bgcolor=\"#ffffff\", sep=0.3, nodesep=0.4, size=\"12,12!\", ratio=fill, pad=0.3];";
+        var nodeAttributes = isRepositoryDiagram
+            ? " node [shape=circle, fixedsize=true, width=13.0, height=13.0, fontname=\"Helvetica\", fontsize=170, fontcolor=\"#111827\", style=filled, fillcolor=\"#ffffff\"];"
+            : " node [shape=circle, fixedsize=true, width=10.0, height=10.0, fontname=\"Helvetica\", fontsize=150, fontcolor=\"#111827\", style=filled, fillcolor=\"#ffffff\"];";
+        var edgeAttributes = isRepositoryDiagram
+            ? " edge [style=solid, arrowsize=4.5, penwidth=5.0, minlen=3, tailclip=true, headclip=true];"
+            : " edge [style=solid, arrowsize=4.0, penwidth=4.5, minlen=2, tailclip=true, headclip=true];";
+            var nodeBorderPenWidth = isRepositoryDiagram ? 24 : 21;
+
+        dotOutput.AppendLine(graphAttributes);
+        dotOutput.AppendLine(nodeAttributes);
+        dotOutput.AppendLine(edgeAttributes);
+
+        for (var i = 0; i < packageList.Count; i++)
+        {
+            var relevantPackage = packageList[i];
+            referencingCounts.TryGetValue(relevantPackage.Name, out var countOfIncomingDependencies);
+            relevantPackage.Guid = $"a{i}i{countOfIncomingDependencies}o{relevantPackage.Dependencies.Count}";
+            relevantPackage.RootPackageName = GetPackageRootName(relevantPackage.Name);
+            if (!rootPackageColors.ContainsKey(relevantPackage.RootPackageName))
+            {
+                rootPackageColors.Add(relevantPackage.RootPackageName, NodeColorPalette[rootPackageColors.Count % NodeColorPalette.Length]);
+            }
+        }
+
+        foreach (var package in packageList)
+        {
+            dotOutput.AppendLine(
+                $"{package.Guid} [penwidth={nodeBorderPenWidth} color=\"{rootPackageColors[package.RootPackageName]}\", label=\"{EscapeDotLabel(package.Guid)}\"];");
+            foreach (var dependency in package.Dependencies)
+            {
+                var packageFromList = packageLookup.GetValueOrDefault(dependency.Name);
                 if (packageFromList != null)
                 {
                     dependency.Guid = packageFromList.Guid;
@@ -76,7 +208,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
                 if (!string.IsNullOrEmpty(dependency.Guid))
                 {
                     var dependencyPackageRootName = GetPackageRootName(dependency.Name);
-                    var color = mainPackageRootName.Equals(dependencyPackageRootName) ? "gray88" : "black";
+                    var color = mainPackageRootName.Equals(dependencyPackageRootName) ? "#374151" : "#111827";
                     dotOutput.AppendLine($"{package.Guid} -> {dependency.Guid} [color=\"{color}\"];");
                 }
             }
@@ -86,23 +218,46 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
         return dotOutput;
     }
 
-    private static Color GetRandomColor()
-    {
-        Random randomGen = new Random();
-        KnownColor[] names = (KnownColor[])Enum.GetValues(typeof(KnownColor));
-        KnownColor randomColorName = names[randomGen.Next(30, 166)];
-        return Color.FromKnownColor(randomColorName);
-    }
-
     private static string GetPackageRootName(string packageName)
     {
         return string.Join("", packageName.Split(".").Take(3));
     }
 
-
-    private void GeneratePngFromDotFile(string dotFilename)
+    private static string GetRepositoryName(string packageName)
     {
-        if (!IsDotInstalled())
+        var segments = packageName.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 3)
+        {
+            return packageName;
+        }
+
+        return string.Join('.', segments.Take(3));
+    }
+
+    private static string EscapeDotLabel(string value)
+    {
+        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+
+
+    private static string BuildImagePathWithExtension(string? outputFilePath, string extension)
+    {
+        if (string.IsNullOrWhiteSpace(outputFilePath))
+        {
+            return string.Empty;
+        }
+
+        var directory = Path.GetDirectoryName(outputFilePath);
+        var filename = Path.GetFileNameWithoutExtension(outputFilePath);
+        var normalizedExtension = extension.StartsWith('.') ? extension : $".{extension}";
+        var outputName = $"{filename}{normalizedExtension}";
+
+        return string.IsNullOrWhiteSpace(directory) ? outputName : Path.Combine(directory, outputName);
+    }
+
+    private void GenerateImageFromDotFile(string dotFilename, string? outputFilePath, string outputFormat, bool setDpi, string layoutEngine)
+    {
+        if (!IsDotInstalledCache.Value)
         {
             Console.WriteLine("Graphviz (dot) is not installed on your system.");
             Console.WriteLine("You can download and install it from:");
@@ -113,36 +268,43 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
             return;
         }
 
-        string pngFilePath = _filePath ?? $"{dotFilename.Split(".")[0]}.png";
-        string command =
-            $"dot -Tpng -Kcirco {dotFilename} -o {pngFilePath}";
-        ProcessStartInfo processStartInfo = CreateProcessStartInfo(command);
+        var outputExtension = outputFormat.StartsWith("svg", StringComparison.OrdinalIgnoreCase) ? ".svg" : ".png";
+        var outputPath = outputFilePath;
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            outputPath = $"{Path.GetFileNameWithoutExtension(dotFilename)}{outputExtension}";
+        }
+
+        ProcessStartInfo processStartInfo = CreateProcessStartInfo(dotFilename, outputPath, outputFormat, setDpi, layoutEngine);
 
         using (Process process = new Process())
         {
             process.StartInfo = processStartInfo;
-            process.OutputDataReceived += (sender, e) =>
-            {
-                if (!string.IsNullOrWhiteSpace(e.Data))
-                {
-                    Console.WriteLine(e.Data);
-                }
-            };
-            process.ErrorDataReceived += (sender, e) =>
-            {
-                if (!string.IsNullOrWhiteSpace(e.Data))
-                {
-                    Console.WriteLine($"Error: {e.Data}");
-                }
-            };
-            Console.WriteLine("Started dot png generation");
+            Console.WriteLine($"Started dot {outputFormat} generation");
             process.Start();
+            var standardOutput = process.StandardOutput.ReadToEnd();
+            var standardError = process.StandardError.ReadToEnd();
             process.WaitForExit();
-            Console.WriteLine("Finished dot png generation");
+            if (!string.IsNullOrWhiteSpace(standardOutput))
+            {
+                Console.WriteLine(standardOutput);
+            }
+
+            if (!string.IsNullOrWhiteSpace(standardError))
+            {
+                Console.WriteLine($"Error: {standardError}");
+            }
+
+            if (process.ExitCode != 0)
+            {
+                throw new Exception($"dot failed for {outputFormat} output with exit code {process.ExitCode}.");
+            }
+
+            Console.WriteLine($"Finished dot {outputFormat} generation");
         }
     }
 
-    static bool IsDotInstalled()
+    static bool CheckDotInstalled()
     {
         try
         {
@@ -167,57 +329,21 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
         }
     }
 
-    private static ProcessStartInfo CreateProcessStartInfo(string command)
+    private static ProcessStartInfo CreateProcessStartInfo(string dotFilename, string outputPath, string outputFormat, bool setDpi, string layoutEngine)
     {
-        var arguments = string.Empty;
-        if (IsMacOS() || IsLinux())
-        {
-            arguments = $"-c \"{command}\"";
-        }
-        else
-        {
-            arguments = $"/C {command}";
-        }
+        // For SVG, skip DPI settings to improve performance; DPI is only relevant for raster formats
+        var dpiArgument = (setDpi && !outputFormat.Contains("svg", StringComparison.OrdinalIgnoreCase)) 
+            ? " -Gdpi=220" 
+            : string.Empty;
 
         return new ProcessStartInfo
         {
-            FileName = GetShellName(),
+            FileName = "dot",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = false,
-            Arguments = arguments
+            Arguments = $"-T{outputFormat}{dpiArgument} -K{layoutEngine} \"{dotFilename}\" -o \"{outputPath}\""
         };
-    }
-
-    static string GetShellName()
-    {
-        if (IsWindows())
-        {
-            return "cmd.exe";
-        }
-
-        if (IsMacOS() || IsLinux())
-        {
-            return "/bin/bash";
-        }
-
-        throw new NotSupportedException("Unsupported operating system.");
-    }
-
-    private static bool IsWindows()
-    {
-        int platform = (int)Environment.OSVersion.Platform;
-        return (platform != 4 && platform != 6 && platform != 128);
-    }
-
-    private static bool IsMacOS()
-    {
-        return Environment.OSVersion.Platform == PlatformID.MacOSX;
-    }
-
-    private static bool IsLinux()
-    {
-        return Environment.OSVersion.Platform == PlatformID.Unix;
     }
 }

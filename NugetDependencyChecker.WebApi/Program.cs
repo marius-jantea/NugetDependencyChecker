@@ -1,14 +1,35 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
+using NugetDependencyChecker.BusinessLogic;
+using NugetDependencyChecker.Implementation;
+using NugetDependencyChecker.WebApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Register services with dependency injection
+builder.Services.AddScoped<IPackageDetailsGetter>(provider =>
+    new ProjectAssetsJsonParser(Path.GetTempFileName()));
+builder.Services.AddScoped<IDependencyMatrixCreator>(provider =>
+    new ExcelDependencyMatrixCreator());
+builder.Services.AddScoped<IDependencyDiagramCreator>(provider =>
+    new DotDependencyDiagramCreator());
+builder.Services.AddScoped<IDependencyAnalysisService, DependencyAnalysisService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo 
+    { 
+        Title = "NuGet Dependency Checker API", 
+        Version = "v1",
+        Description = "API for analyzing NuGet package dependencies from project.assets.json files",
+        Contact = new OpenApiContact
+        {
+            Name = "NuGet Dependency Checker"
+        }
+    });
 
     // Map `FileContentResult` to a binary response
     c.MapType<FileContentResult>(() => new OpenApiSchema
@@ -19,27 +40,63 @@ builder.Services.AddSwaggerGen(c =>
 
     // Add response content type for file downloads
     c.OperationFilter<FileResponseOperationFilter>();
+    
+    // Include XML comments if available
+    var xmlFile = Path.Combine(AppContext.BaseDirectory, "NugetDependencyChecker.WebApi.xml");
+    if (File.Exists(xmlFile))
+    {
+        c.IncludeXmlComments(xmlFile);
+    }
 });
+
+// Configure CORS with restricted origins for production
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", builder =>
+    options.AddPolicy("AllowSpecificOrigins", builder =>
     {
-        builder.AllowAnyOrigin()
+        var allowedOrigins = new[] 
+        {
+            "http://localhost:3000",
+            "http://localhost:5000",
+            "http://localhost:5173"
+        };
+
+        builder.WithOrigins(allowedOrigins)
             .AllowAnyMethod()
-            .AllowAnyHeader();
+            .AllowAnyHeader()
+            .AllowCredentials();
     });
+
+    // Also keep a development policy for local testing
+    if (builder.Environment.IsDevelopment())
+    {
+        options.AddPolicy("AllowAll", builder =>
+        {
+            builder.AllowAnyOrigin()
+                .AllowAnyMethod()
+                .AllowAnyHeader();
+        });
+    }
 });
 
 var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "NuGet Dependency Checker API v1");
+});
+
+var corsPolicy = app.Environment.IsDevelopment() ? "AllowAll" : "AllowSpecificOrigins";
+app.UseCors(corsPolicy);
+
 app.UseAuthorization();
 app.UseAuthentication();
 
-
-app.UseSwagger();
-app.UseSwaggerUI();
-app.UseCors("AllowAll");
-
-//app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.MapControllers();
 
