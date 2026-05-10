@@ -37,19 +37,19 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
             var packageList = packages.ToList();
             var defaultOutputBaseName = $"DependencyDiagram_{DateTime.UtcNow.Ticks}";
             var packageOutputPath = _filePath ?? $"{defaultOutputBaseName}.svg";
-            var repositoryOutputPath = _filePath != null
+            var repositoryOutputPath = _filePath != null && _diagramMode == DependencyDiagramMode.Both
                 ? BuildOutputPath(_filePath, "_repositories")
-                : $"{defaultOutputBaseName}_repositories.svg";
+                : _filePath ?? $"{defaultOutputBaseName}_repositories.svg";
 
             if (_diagramMode == DependencyDiagramMode.Package || _diagramMode == DependencyDiagramMode.Both)
             {
-                CreateDiagram(packageList, packageOutputPath);
+                CreateDiagram(packageList, packageOutputPath, DependencyDiagramMode.Package);
             }
 
             if (_diagramMode == DependencyDiagramMode.Repository || _diagramMode == DependencyDiagramMode.Both)
             {
                 var repositoryPackages = AggregatePackagesByRepository(packageList);
-                CreateDiagram(repositoryPackages, repositoryOutputPath);
+                CreateDiagram(repositoryPackages, repositoryOutputPath, DependencyDiagramMode.Repository);
             }
 
             await Task.CompletedTask;
@@ -61,11 +61,11 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
         }
     }
 
-    private void CreateDiagram(IEnumerable<Package> packages, string? outputFilePath)
+    private void CreateDiagram(IEnumerable<Package> packages, string? outputFilePath, DependencyDiagramMode mode)
     {
         var randomFileName = Path.GetRandomFileName() + ".dot";
-        var relevantPackagesDotOutput = GetDotOutput(packages);
-        var layoutEngine = _diagramMode == DependencyDiagramMode.Repository
+        var relevantPackagesDotOutput = GetDotOutput(packages, mode);
+        var layoutEngine = mode == DependencyDiagramMode.Repository
             ? RepositoryLayoutEngine
             : PackageLayoutEngine;
 
@@ -134,7 +134,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
             : Path.Combine(directory, repositoryFileName);
     }
 
-    private StringBuilder GetDotOutput(IEnumerable<Package> packages)
+    private StringBuilder GetDotOutput(IEnumerable<Package> packages, DependencyDiagramMode mode)
     {
         var packageList = packages.ToList();
         var dotOutput = new StringBuilder();
@@ -157,7 +157,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
             }
         }
 
-        var isRepositoryDiagram = _diagramMode == DependencyDiagramMode.Repository;
+        var isRepositoryDiagram = mode == DependencyDiagramMode.Repository;
         dotOutput.AppendLine("digraph G {");
         var layoutEngine = isRepositoryDiagram ? RepositoryLayoutEngine : PackageLayoutEngine;
         dotOutput.AppendLine($" layout=\"{layoutEngine}\";");

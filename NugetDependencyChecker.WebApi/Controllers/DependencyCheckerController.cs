@@ -65,7 +65,7 @@ namespace NugetDependencyChecker.WebApi.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        [Produces("image/svg+xml")]
+        [Produces("image/svg+xml", "application/json")]
         public async Task<IActionResult> CreatePackageDependencyDiagram(
             IFormFile file, 
             [FromQuery] string packageFilterPrefix = "")
@@ -103,7 +103,7 @@ namespace NugetDependencyChecker.WebApi.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        [Produces("image/svg+xml")]
+        [Produces("image/svg+xml", "application/json")]
         public async Task<IActionResult> CreateRepositoryDependencyDiagram(
             IFormFile file,
             [FromQuery] string packageFilterPrefix = "")
