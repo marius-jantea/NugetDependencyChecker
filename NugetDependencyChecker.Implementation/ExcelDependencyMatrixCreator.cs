@@ -35,7 +35,7 @@ namespace NugetDependencyChecker.Implementation
             {
                 Console.WriteLine(ex);
                 return Task.FromException(
-                    new Exception("An error has occured while generating excel dependency matrix."));
+                    new Exception("An error has occurred while generating excel dependency matrix.", ex));
             }
         }
 
