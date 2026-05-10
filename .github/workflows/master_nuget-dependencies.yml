@@ -1,13 +1,21 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy ASP.Net Core app to Azure Web App - nuget-dependencies
+name: Deploy Web API to Azure (master)
 
 on:
   push:
     branches:
       - master
   workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-master
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -16,22 +24,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up .NET Core
+      - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj
 
       - name: Build with dotnet
-        run: dotnet build --configuration Release
+        run: dotnet build ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj --configuration Release --no-restore
 
-      - name: dotnet publish
-        run: dotnet publish ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj -c Release -o myapp
+      - name: Publish Web API
+        run: dotnet publish ./NugetDependencyChecker.WebApi/NugetDependencyChecker.WebApi.csproj -c Release -o ./publish
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: '.net-app'
-          path: myapp
+          path: ./publish
 
   deploy:
     runs-on: ubuntu-latest
@@ -39,8 +50,6 @@ jobs:
     environment:
       name: 'Production'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-    permissions:
-      id-token: write #This is required for requesting the JWT
 
     steps:
       - name: Download artifact from build job
@@ -54,9 +63,6 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_043A5C8A72054E358E85CA8324BBDAB6 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7206E7BFE8724DB7B144B887B332C357 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_80891A99381747D0A96AF6E43C9B559A }}
-      
-      - name: Print current directory
-        run: pwd
       
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
