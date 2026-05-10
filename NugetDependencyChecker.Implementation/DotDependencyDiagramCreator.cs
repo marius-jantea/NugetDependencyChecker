@@ -8,7 +8,8 @@ namespace NugetDependencyChecker.Implementation;
 public class DotDependencyDiagramCreator : IDependencyDiagramCreator
 {
     private readonly string? _filePath;
-    private const string GraphvizLayoutEngine = "fdp";
+    private const string PackageLayoutEngine = "fdp";
+    private const string RepositoryLayoutEngine = "dot";
     private readonly DependencyDiagramMode _diagramMode;
     private static readonly Lazy<bool> IsDotInstalledCache = new(CheckDotInstalled);
     private static readonly string[] NodeColorPalette =
@@ -64,11 +65,14 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
     {
         var randomFileName = Path.GetRandomFileName() + ".dot";
         var relevantPackagesDotOutput = GetDotOutput(packages);
+        var layoutEngine = _diagramMode == DependencyDiagramMode.Repository
+            ? RepositoryLayoutEngine
+            : PackageLayoutEngine;
 
         File.WriteAllText(randomFileName, relevantPackagesDotOutput.ToString());
         var svgOutputPath = BuildImagePathWithExtension(outputFilePath, ".svg");
 
-        GenerateImageFromDotFile(randomFileName, svgOutputPath, "svg", false);
+        GenerateImageFromDotFile(randomFileName, svgOutputPath, "svg", false, layoutEngine);
     }
 
     private static List<Package> AggregatePackagesByRepository(IEnumerable<Package> packages)
@@ -130,7 +134,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
             : Path.Combine(directory, repositoryFileName);
     }
 
-    private static StringBuilder GetDotOutput(IEnumerable<Package> packages)
+    private StringBuilder GetDotOutput(IEnumerable<Package> packages)
     {
         var packageList = packages.ToList();
         var dotOutput = new StringBuilder();
@@ -153,11 +157,25 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
             }
         }
 
+        var isRepositoryDiagram = _diagramMode == DependencyDiagramMode.Repository;
         dotOutput.AppendLine("digraph G {");
-        dotOutput.AppendLine($" layout=\"{GraphvizLayoutEngine}\";");
-        dotOutput.AppendLine(" graph [overlap=prism, splines=line, bgcolor=\"#ffffff\", sep=0.3];");
-        dotOutput.AppendLine(" node [shape=circle, fixedsize=true, width=1.0, height=1.0, fontname=\"Helvetica\", fontsize=9, fontcolor=\"#111827\", style=filled, fillcolor=\"#ffffff\"];");
-        dotOutput.AppendLine(" edge [style=solid, arrowsize=0.8, penwidth=1.5];");
+        var layoutEngine = isRepositoryDiagram ? RepositoryLayoutEngine : PackageLayoutEngine;
+        dotOutput.AppendLine($" layout=\"{layoutEngine}\";");
+
+            var graphAttributes = isRepositoryDiagram
+                ? " graph [overlap=prism, splines=true, bgcolor=\"#ffffff\", sep=0.7, nodesep=0.8, size=\"14,14!\", ratio=fill, pad=0.4];"
+                : " graph [overlap=prism, splines=true, bgcolor=\"#ffffff\", sep=0.3, nodesep=0.4, size=\"12,12!\", ratio=fill, pad=0.3];";
+        var nodeAttributes = isRepositoryDiagram
+            ? " node [shape=circle, fixedsize=true, width=13.0, height=13.0, fontname=\"Helvetica\", fontsize=170, fontcolor=\"#111827\", style=filled, fillcolor=\"#ffffff\"];"
+            : " node [shape=circle, fixedsize=true, width=10.0, height=10.0, fontname=\"Helvetica\", fontsize=150, fontcolor=\"#111827\", style=filled, fillcolor=\"#ffffff\"];";
+        var edgeAttributes = isRepositoryDiagram
+            ? " edge [style=solid, arrowsize=4.5, penwidth=5.0, minlen=3, tailclip=true, headclip=true];"
+            : " edge [style=solid, arrowsize=4.0, penwidth=4.5, minlen=2, tailclip=true, headclip=true];";
+            var nodeBorderPenWidth = isRepositoryDiagram ? 24 : 21;
+
+        dotOutput.AppendLine(graphAttributes);
+        dotOutput.AppendLine(nodeAttributes);
+        dotOutput.AppendLine(edgeAttributes);
 
         for (var i = 0; i < packageList.Count; i++)
         {
@@ -174,7 +192,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
         foreach (var package in packageList)
         {
             dotOutput.AppendLine(
-                $"{package.Guid} [penwidth=2 color=\"{rootPackageColors[package.RootPackageName]}\", label=\"{EscapeDotLabel(package.Guid)}\"];");
+                $"{package.Guid} [penwidth={nodeBorderPenWidth} color=\"{rootPackageColors[package.RootPackageName]}\", label=\"{EscapeDotLabel(package.Guid)}\"];");
             foreach (var dependency in package.Dependencies)
             {
                 var packageFromList = packageLookup.GetValueOrDefault(dependency.Name);
@@ -237,7 +255,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
         return string.IsNullOrWhiteSpace(directory) ? outputName : Path.Combine(directory, outputName);
     }
 
-    private void GenerateImageFromDotFile(string dotFilename, string? outputFilePath, string outputFormat, bool setDpi)
+    private void GenerateImageFromDotFile(string dotFilename, string? outputFilePath, string outputFormat, bool setDpi, string layoutEngine)
     {
         if (!IsDotInstalledCache.Value)
         {
@@ -257,7 +275,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
             outputPath = $"{Path.GetFileNameWithoutExtension(dotFilename)}{outputExtension}";
         }
 
-        ProcessStartInfo processStartInfo = CreateProcessStartInfo(dotFilename, outputPath, outputFormat, setDpi);
+        ProcessStartInfo processStartInfo = CreateProcessStartInfo(dotFilename, outputPath, outputFormat, setDpi, layoutEngine);
 
         using (Process process = new Process())
         {
@@ -311,7 +329,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
         }
     }
 
-    private static ProcessStartInfo CreateProcessStartInfo(string dotFilename, string outputPath, string outputFormat, bool setDpi)
+    private static ProcessStartInfo CreateProcessStartInfo(string dotFilename, string outputPath, string outputFormat, bool setDpi, string layoutEngine)
     {
         // For SVG, skip DPI settings to improve performance; DPI is only relevant for raster formats
         var dpiArgument = (setDpi && !outputFormat.Contains("svg", StringComparison.OrdinalIgnoreCase)) 
@@ -325,7 +343,7 @@ public class DotDependencyDiagramCreator : IDependencyDiagramCreator
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = false,
-            Arguments = $"-T{outputFormat}{dpiArgument} -K{GraphvizLayoutEngine} \"{dotFilename}\" -o \"{outputPath}\""
+            Arguments = $"-T{outputFormat}{dpiArgument} -K{layoutEngine} \"{dotFilename}\" -o \"{outputPath}\""
         };
     }
 }
