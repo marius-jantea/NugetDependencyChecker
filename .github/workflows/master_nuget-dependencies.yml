@@ -22,7 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: 'Production'
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
 
     steps:
       - uses: actions/checkout@v4
@@ -59,11 +58,33 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_043A5C8A72054E358E85CA8324BBDAB6 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7206E7BFE8724DB7B144B887B332C357 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_80891A99381747D0A96AF6E43C9B559A }}
-      
-      - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'nuget-dependencies'
-          slot-name: 'Production'
-          package: ./webapi.zip
+
+      - name: Resolve resource group
+        id: resolve-rg
+        run: |
+          RG=$(az webapp list --query "[?name=='nuget-dependencies'].resourceGroup | [0]" -o tsv)
+          if [ -z "$RG" ]; then
+            echo "Could not resolve resource group for app nuget-dependencies"
+            exit 1
+          fi
+          echo "resource_group=$RG" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy zip package with Azure CLI
+        run: |
+          az webapp deploy \
+            --resource-group "${{ steps.resolve-rg.outputs.resource_group }}" \
+            --name "nuget-dependencies" \
+            --src-path "./webapi.zip" \
+            --type zip
+
+      - name: Restart web app
+        run: |
+          az webapp restart \
+            --resource-group "${{ steps.resolve-rg.outputs.resource_group }}" \
+            --name "nuget-dependencies"
+
+      - name: Verify home page is deployed
+        run: |
+          sleep 15
+          RESPONSE=$(curl -fsSL https://nuget-dependencies.azurewebsites.net/)
+          echo "$RESPONSE" | grep -q "NuGet Dependency Checker API"
