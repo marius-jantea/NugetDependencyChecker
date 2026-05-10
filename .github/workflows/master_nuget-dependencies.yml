@@ -85,6 +85,22 @@ jobs:
 
       - name: Verify home page is deployed
         run: |
-          sleep 15
-          RESPONSE=$(curl -fsSL https://nuget-dependencies.azurewebsites.net/)
-          echo "$RESPONSE" | grep -q "NuGet Dependency Checker API"
+          URL="https://nuget-dependencies.azurewebsites.net/"
+          EXPECTED="NuGet Dependency Checker API"
+
+          echo "Verifying deployment at $URL"
+          for attempt in {1..20}; do
+            STATUS=$(curl -s -o response.html -w "%{http_code}" "$URL" || true)
+
+            if grep -q "$EXPECTED" response.html; then
+              echo "Deployment verified on attempt $attempt (HTTP $STATUS)."
+              exit 0
+            fi
+
+            echo "Attempt $attempt/20: expected marker not found (HTTP $STATUS). Waiting 15s..."
+            sleep 15
+          done
+
+          echo "Deployment verification failed. First 120 lines of response:"
+          sed -n '1,120p' response.html
+          exit 1
