@@ -98,6 +98,32 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+app.MapGet("/", () =>
+    Results.Content(
+        """
+        <!doctype html>
+        <html lang=\"en\">
+        <head>
+            <meta charset=\"utf-8\" />
+            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+            <title>NuGet Dependency Checker API</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111827; }
+                h1 { margin-bottom: 0.5rem; }
+                .ok { color: #16a34a; font-weight: 600; }
+                a { color: #2563eb; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>NuGet Dependency Checker API</h1>
+            <p class=\"ok\">Deployment is working.</p>
+            <p>Open <a href=\"/swagger\">Swagger UI</a> to use the API endpoints.</p>
+        </body>
+        </html>
+        """,
+        "text/html"));
+
 app.MapControllers();
 
 app.Run();
