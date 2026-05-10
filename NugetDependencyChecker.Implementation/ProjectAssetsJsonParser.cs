@@ -21,6 +21,8 @@ namespace NugetDependencyChecker.Implementation
 
         public IEnumerable<Package> GetAllPackages(string packageFilterPrefix)
         {
+            allPackages.Clear();
+
             var packageInfo = File.ReadAllText(jsonPath);
             var jsonObject = JObject.Parse(packageInfo);
             var targets = jsonObject[targetsJsonKey] as JObject;
