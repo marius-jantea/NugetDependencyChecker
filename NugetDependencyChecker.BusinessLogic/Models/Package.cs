@@ -10,8 +10,8 @@ namespace NugetDependencyChecker.BusinessLogic.Models
         public IList<Package> Dependencies { get; private set; }
         public ObservableCollection<ChildPackage> PackagesThatUseThisPackage { get; private set; }
         public int NumberOfPackagesThatUseThisPackage { get; private set; }
-        public string Guid { get; set; }
-        public string RootPackageName { get; set; }
+        public string Guid { get; set; } = string.Empty;
+        public string RootPackageName { get; set; } = string.Empty;
 
         public Package(string name, string version) : this(name, version, new List<Package>())
         {
